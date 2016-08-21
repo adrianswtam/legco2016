@@ -7,13 +7,13 @@
 # Released under 2-clause BSD license.
 #
 #
-from bokeh.plotting import figure, output_file, show
-from bokeh.io import output_notebook, show
-from bokeh.models import Label, CheckboxGroup, CustomJS, Panel, Tabs, Div
-from bokeh.layouts import row, widgetbox
+from bokeh.plotting import figure
+from bokeh.io import show
+from bokeh.models import CheckboxGroup, CustomJS, Panel, Tabs
+from bokeh.layouts import row
 from bokeh.palettes import brewer
 
-from ipy_table import make_table, set_row_style, render, set_global_style, set_cell_style
+from ipy_table import make_table, set_global_style, set_cell_style
 from IPython.display import HTML, display
 
 from datetime import datetime
