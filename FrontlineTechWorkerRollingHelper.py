@@ -8,7 +8,7 @@
 #
 #
 from bokeh.plotting import figure
-from bokeh.io import show
+from bokeh.io import output_notebook, show
 from bokeh.models import CheckboxGroup, CustomJS, Panel, Tabs
 from bokeh.layouts import row
 from bokeh.palettes import brewer
