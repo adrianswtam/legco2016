@@ -336,7 +336,7 @@ def create_charts(cur):
                  lines[n].visible = (cb_obj.active.indexOf(n) >= 0);
                 labels[n].visible = (cb_obj.active.indexOf(n) >= 0);
             };''' % (",".join("line%d" % n for n in all_lines), ",".join("label%d" % n for n in all_lines))
-        checkbox = CheckboxGroup(labels=[str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1] for c in candids],
+        checkbox = CheckboxGroup(labels=[str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1]+' '+("%.2f%%"%c[3]) for c in candids],
                                  active=top_5)
         checkbox.callback = CustomJS(args=dict(customjs_params), code=jscode)
         # layout and show
