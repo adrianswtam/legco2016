@@ -22,7 +22,7 @@ import sqlite3
 def webscraping():
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
-    main_url = 'http://data.hkupop.hku.hk/hkupop/lc_election/ch.html'
+    main_url = 'http://data.hkupop.hku.hk/v2/hkupop/lc_election/ch.html'
     xpath = "//a[text()='下載']/@href[substring(.,string-length(.)-string-length('.csvy')+1)='.csvy']"
     text = urllib.request.urlopen(main_url).read().decode('utf-8')
     dom = lxml.html.document_fromstring(text)
