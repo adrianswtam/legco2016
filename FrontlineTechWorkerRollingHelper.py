@@ -30,8 +30,6 @@ import yaml
 
 assert(sys.version_info.major == 3) # Python3 only!
 
-include_8888 = True
-
 def webscraping(use_cache=False):
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
@@ -243,7 +241,7 @@ def buildsqlite():
     cur.execute(' '.join(sql[:-1]))
     return conn,cur
 
-def get_trend(cur, region, num):
+def get_trend(cur, region, num, include_8888=False):
     "Read from database the rolling poll trend"
     sql = "SELECT daterange, candid, redness, valid_pct FROM overall WHERE region=? AND num=? ORDER BY daterange"
     if include_8888:
@@ -259,7 +257,7 @@ def get_trend(cur, region, num):
         ret.append([date, row[3]])
     return candid, redness, ret
 
-def get_rank(cur, region, date):
+def get_rank(cur, region, date, include_8888=False):
     "Read from database the latest ranking"
     if isinstance(date, datetime):
         datestr = date.strftime("%m%d")
@@ -312,9 +310,9 @@ regions = [["香港島","HKIsland",6],
            ["新界西","NTWest",9],["新界東","NTEast",9],
            ["超區","SuperDC",5]]
 
-def create_charts(cur):
+def create_charts(cur, include_8888=False):
     " Create chart on each tab for 5 regions + super DC "
-    tables = create_tables(cur, for_div = True)
+    tables = create_tables(cur, for_div=True, include_8888=include_8888)
     tabs = []
     for title,code,seats in regions:
         # chart components
@@ -322,7 +320,7 @@ def create_charts(cur):
         candids = []
         earliest_date, latest_date = None, None
         for n in range(1,30):
-            candid, redness, trend = get_trend(cur, code, n)
+            candid, redness, trend = get_trend(cur, code, n, include_8888)
             if not trend: continue
             earliest_date, latest_date = trend[0][0], trend[-1][0]
             colour = getcolour(redness)
@@ -332,7 +330,7 @@ def create_charts(cur):
                            text_font_size="9pt", y_offset=0.25)
             candids.append([n, candid, colour, trend[-1][1], line, label])
         if include_8888:
-            candid, redness, trend = get_trend(cur, code, 8888)
+            candid, redness, trend = get_trend(cur, code, 8888, True)
             if not trend: continue
             earliest_date, latest_date = trend[0][0], trend[-1][0]
             line = p.line([d for d,_ in trend], [p for _,p in trend], color="#707070", line_width=2, line_alpha=0.9)
@@ -369,13 +367,13 @@ def create_charts(cur):
     # build and return 
     return Tabs(tabs=tabs)
 
-def create_tables(cur, for_div=False):
+def create_tables(cur, for_div=False, include_8888=False):
     " Produce ranking table "
     tabs = {}
     lastdate = list(cur.execute("SELECT MAX(daterange) FROM overall"))[0][0]
     rangetext = lastdate[6:8]+'/'+lastdate[4:6]+'至'+lastdate[11:13]+'/'+lastdate[9:11]
     for title,code,_ in regions:
-        daterange, rankdata = get_rank(cur, code, lastdate[-4:])
+        daterange, rankdata = get_rank(cur, code, lastdate[-4:], include_8888)
         if code == 'SuperDC':
             for n,row in enumerate(rankdata):
                 row = list(row)
