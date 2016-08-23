@@ -24,7 +24,7 @@ https://rawgit.com/fltw/legco2016/master/chart8888.html
 
 系統需求: python3, Jupyter, bokeh 0.12, lxml, pyYAML
 
-## 專業資訊
+## 原始資料
 
 是咁的，我都知唔係個個鍾意睇圖，所以我地都整咗MakeExcel.py，可以將港大民研嘅原始數據化成Excel，但係你就要裝Python3+xlsxwriter啦。
 
@@ -32,7 +32,7 @@ https://rawgit.com/fltw/legco2016/master/chart8888.html
 
 呢度所有程式由前線科技人員制作，資料由香港大學民意研究計劃及選舉事務處取得，無人會保証任何嘢嘅準確性或客觀性。使用者應用自己個腦諗下先好再作任何解讀。呢個唔係投資產品，支持度將來亦可升可跌。
 
-## 延申閱讀
+## 延伸閱讀
 
 * 港大民研 https://www.hkupop.hku.hk/chinese/resources/lc2016/rolling/index.html
 * 立法會選舉 http://www.elections.gov.hk/legco2016/chi/index.html
