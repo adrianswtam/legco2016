@@ -30,6 +30,8 @@ import yaml
 
 assert(sys.version_info.major == 3) # Python3 only!
 
+include_8888 = True
+
 def webscraping(use_cache=False):
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
@@ -244,6 +246,8 @@ def buildsqlite():
 def get_trend(cur, region, num):
     "Read from database the rolling poll trend"
     sql = "SELECT daterange, candid, redness, valid_pct FROM overall WHERE region=? AND num=? ORDER BY daterange"
+    if include_8888:
+        sql = sql.replace("valid_pct","adj_pct")
     rows = list(cur.execute(sql, (region, num)))
     if not rows:
         return None, None, []
@@ -270,6 +274,8 @@ def get_rank(cur, region, date):
     sql = "SELECT daterange, num, candid, redness, valid_pct " \
           "FROM overall " \
           "WHERE region=? AND daterange LIKE '%%%s' AND num<30 ORDER BY valid_pct DESC" % datestr
+    if include_8888:
+        sql = sql.replace("valid_pct","adj_pct").replace("num<30","(num<30 OR num=8888)")
     rows = list(cur.execute(sql, (region,)))
     if not rows:
         return None, []
@@ -312,7 +318,7 @@ def create_charts(cur):
     tabs = []
     for title,code,seats in regions:
         # chart components
-        p = figure(x_axis_label='滾動日期', y_axis_label='有效支持%', x_axis_type="datetime")
+        p = figure(x_axis_label='滾動日期', y_axis_label='支持%' if include_8888 else '有效支持%', x_axis_type="datetime")
         candids = []
         earliest_date, latest_date = None, None
         for n in range(1,30):
@@ -325,6 +331,15 @@ def create_charts(cur):
                            text_align='right', text_alpha=0.9, text_baseline='bottom', text_color=colour,
                            text_font_size="9pt", y_offset=0.25)
             candids.append([n, candid, colour, trend[-1][1], line, label])
+        if include_8888:
+            candid, redness, trend = get_trend(cur, code, 8888)
+            if not trend: continue
+            earliest_date, latest_date = trend[0][0], trend[-1][0]
+            line = p.line([d for d,_ in trend], [p for _,p in trend], color="#707070", line_width=2, line_alpha=0.9)
+            label = p.text([trend[-1][0]], [trend[-1][1]], text=["未決定"],
+                           text_align='right', text_alpha=0.9, text_baseline='bottom', text_color="#707070",
+                           text_font_size="9pt", y_offset=0.25)
+            candids.append([8888, "未決定", "#707070", trend[-1][1], line, label])
         p.line([earliest_date, latest_date],[100.0/seats, 100.0/seats],
                line_dash=[6,3], color="black", line_width=2, line_alpha=0.5)
         # control
@@ -367,8 +382,8 @@ def create_tables(cur, for_div=False):
                 row[0] += 800
                 rankdata[n] = row
         tabletitle = rangetext+title+'民調排名'
-        human, beast = [r for r in rankdata if r[2]<0], [r for r in rankdata if r[2]>0]
-        header = ["編號","政黨","候選人","有效%",""]
+        human, beast = [r for r in rankdata if r[2] is not None and r[2]<0], [r for r in rankdata if r[2] is not None and r[2]>0]
+        header = ["編號","政黨","候選人","%" if include_8888 else "有效%",""]
         tabledata = [[tabletitle]+([""]*10),["非建制"]+([""]*5)+["建制"]+([""]*4),header + [""] + header]
         for n in range(max(len(human), len(beast))):
             tabledata.append([])
