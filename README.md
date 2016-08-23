@@ -38,3 +38,4 @@ https://rawgit.com/fltw/legco2016/master/chart8888.html
 * 立法會選舉 http://www.elections.gov.hk/legco2016/chi/index.html
 * 雷動計劃 https://www.facebook.com/ThunderGoHK/
 * 前線科技人員 https://www.facebook.com/FrontlineTechWorkersConcernGroup/
+* 滾動民調試算表 https://goo.gl/bd2i8r
