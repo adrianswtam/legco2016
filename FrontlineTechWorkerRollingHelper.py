@@ -9,7 +9,7 @@
 #
 from bokeh.plotting import figure
 from bokeh.io import output_notebook, show
-from bokeh.models import CheckboxGroup, CustomJS, Panel, Tabs
+from bokeh.models import CheckboxGroup, CustomJS, Panel, Tabs, Div
 from bokeh.layouts import row
 from bokeh.palettes import brewer
 
@@ -30,17 +30,22 @@ import yaml
 
 assert(sys.version_info.major == 3) # Python3 only!
 
-def webscraping():
+def webscraping(use_cache=False):
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
-    main_url = 'http://data.hkupop.hku.hk/v2/hkupop/lc_election/ch.html'
-    xpath = "//a[text()='下載']/@href[substring(.,string-length(.)-string-length('.csvy')+1)='.csvy']"
-    text = urllib.request.urlopen(main_url).read().decode('utf-8')
-    dom = lxml.html.document_fromstring(text)
-    csvyurls = [urllib.parse.urljoin(main_url,relurl) for relurl in dom.xpath(xpath)]
-    for url in reversed(csvyurls):
-        if 'lc2016_rolling' not in url: continue # prevent mistake
-        yield url, urllib.request.urlopen(url).read().decode('utf-8')
+    if not use_cache:
+        main_url = 'http://data.hkupop.hku.hk/v2/hkupop/lc_election/ch.html'
+        xpath = "//a[text()='下載']/@href[substring(.,string-length(.)-string-length('.csvy')+1)='.csvy']"
+        text = urllib.request.urlopen(main_url).read().decode('utf-8')
+        dom = lxml.html.document_fromstring(text)
+        csvyurls = [urllib.parse.urljoin(main_url,relurl) for relurl in dom.xpath(xpath)]
+        for url in reversed(csvyurls):
+            if 'lc2016_rolling' not in url: continue # prevent mistake
+            yield url, urllib.request.urlopen(url).read().decode('utf-8')
+    else:
+        for f in reversed(os.listdir(".")):
+            if 'LC2016_final_' not in f: continue
+            yield f, open(f, encoding='utf-8').read()
 
 def deduce_name(url):
     "Deduce filename from URL"
@@ -303,6 +308,7 @@ regions = [["香港島","HKIsland",6],
 
 def create_charts(cur):
     " Create chart on each tab for 5 regions + super DC "
+    tables = create_tables(cur, for_div = True)
     tabs = []
     for title,code,seats in regions:
         # chart components
@@ -339,16 +345,18 @@ def create_charts(cur):
         checkbox = CheckboxGroup(labels=[str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1]+' '+("%.2f%%"%c[3]) for c in candids],
                                  active=top_5)
         checkbox.callback = CustomJS(args=dict(customjs_params), code=jscode)
+        # ranking table
+        div = Div(text=tables[code], width=600)
         # layout and show
-        layout = row(checkbox, p)
+        layout = row(checkbox, p, div)
         tab = Panel(child=layout, title=title+"民調")
         tabs.append(tab)
     # build and return 
     return Tabs(tabs=tabs)
 
-def create_tables(cur):
+def create_tables(cur, for_div=False):
     " Produce ranking table "
-    tabs = []
+    tabs = {}
     lastdate = list(cur.execute("SELECT MAX(daterange) FROM overall"))[0][0]
     rangetext = lastdate[6:8]+'/'+lastdate[4:6]+'至'+lastdate[11:13]+'/'+lastdate[9:11]
     for title,code,_ in regions:
@@ -390,4 +398,8 @@ def create_tables(cur):
                     set_cell_style(3+m,n, color=hcolor)
                 elif n > 5:
                     set_cell_style(3+m,n, color=bcolor)
-        display(HTML(table._repr_html_()))
+        if not for_div:
+            display(HTML(table._repr_html_()))
+        else:
+            tabs[code] = table._repr_html_()
+    if tabs: return tabs
