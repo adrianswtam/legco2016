@@ -362,7 +362,7 @@ def create_charts(cur, include_8888=False):
         div = Div(text=tables[code], width=600)
         # layout and show
         layout = row(checkbox, p, div)
-        tab = Panel(child=layout, title=title+"民調")
+        tab = Panel(child=layout, title=title+"民調（"+str(seats)+'席）')
         tabs.append(tab)
     # build and return 
     return Tabs(tabs=tabs)
