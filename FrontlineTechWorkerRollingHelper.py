@@ -340,6 +340,9 @@ def create_charts(cur, include_8888=False):
             candids.append([8888, "未決定", "#707070", trend[-1][1], line, label])
         p.line([earliest_date, latest_date],[100.0/seats, 100.0/seats],
                line_dash=[6,3], color="black", line_width=2, line_alpha=0.5)
+        p.text([earliest_date], [100.0/seats], text=["穩勝門檻"],
+               text_align='left', text_alpha=0.9, text_baseline='bottom', text_color="black",
+                       text_font_size="8pt", y_offset=0.15)
         # control
         all_lines = [n for n,_ in enumerate(candids)]
         top_5 = [n for _,n in sorted([(c[3],n) for n,c in enumerate(candids)], reverse=True)[:5]]
