@@ -338,16 +338,18 @@ def create_charts(cur, include_8888=False):
                            text_align='right', text_alpha=0.9, text_baseline='bottom', text_color="#707070",
                            text_font_size="9pt", y_offset=0.25)
             candids.append([8888, "未決定", "#707070", trend[-1][1], line, label])
-        p.line([earliest_date, latest_date],[100.0/seats, 100.0/seats],
+        p.line([earliest_date, latest_date],[100.0/(seats+1), 100.0/(seats+1)],
                line_dash=[6,3], color="black", line_width=2, line_alpha=0.5)
-        p.text([earliest_date], [100.0/seats], text=["穩勝門檻"],
+        p.text([earliest_date], [100.0/(seats+1)], text=["穩勝門檻"],
                text_align='left', text_alpha=0.9, text_baseline='bottom', text_color="black",
                        text_font_size="8pt", y_offset=0.15)
         # control
         all_lines = [n for n,_ in enumerate(candids)]
-        top_5 = [n for _,n in sorted([(c[3],n) for n,c in enumerate(candids)], reverse=True)[:5]]
+        top_n = [n for _,n in sorted([(c[3],n) for n,c in enumerate(candids) if c[0]<30], reverse=True)][:seats]
+        if include_8888:
+            top_n.append(len(candids)-1) # last index = 8888
         for n in all_lines:
-            if n not in top_5:
+            if n not in top_n:
                 candids[n][-1].visible = candids[n][-2].visible = False
         customjs_params = [("line%d"%n, candid[-2]) for n,candid in enumerate(candids)] + \
                           [("label%d"%n, candid[-1]) for n,candid in enumerate(candids)]
@@ -359,7 +361,7 @@ def create_charts(cur, include_8888=False):
                 labels[n].visible = (cb_obj.active.indexOf(n) >= 0);
             };''' % (",".join("line%d" % n for n in all_lines), ",".join("label%d" % n for n in all_lines))
         checkbox = CheckboxGroup(labels=[str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1]+' '+("%.2f%%"%c[3]) for c in candids],
-                                 active=top_5)
+                                 active=top_n)
         checkbox.callback = CustomJS(args=dict(customjs_params), code=jscode)
         # ranking table
         div = Div(text=tables[code], width=600)
