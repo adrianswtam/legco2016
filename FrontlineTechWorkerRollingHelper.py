@@ -30,7 +30,7 @@ import yaml
 
 assert(sys.version_info.major == 3) # Python3 only!
 
-def webscraping(use_cache=False):
+def webscraping(use_cache=True):
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
     if not use_cache:
@@ -43,7 +43,7 @@ def webscraping(use_cache=False):
             if 'lc2016_rolling' not in url: continue # prevent mistake
             yield url, urllib.request.urlopen(url).read().decode('utf-8')
     else:
-        for f in reversed(os.listdir(".")):
+        for f in reversed(sorted(os.listdir("."))):
             if 'LC2016_final_' not in f: continue
             yield f, open(f, encoding='utf-8').read()
 
@@ -152,7 +152,7 @@ def redness(cur):
     cur.execute("CREATE TABLE redness(region,num,redness,who)")
     cur.executemany("INSERT INTO redness(region,num,redness,who) VALUES(?,?,?,?)", data)
 
-def buildsqlite():
+def buildsqlite(dbname=':memory:'):
     " Produce cursor to SQLite holding all latest data from HKUPOP "
     columns = ['sourcefile']
     data = []
@@ -210,7 +210,7 @@ def buildsqlite():
         os.unlink(file_dest)
     except:
         pass
-    conn = sqlite3.connect(':memory:')
+    conn = sqlite3.connect(dbname)
     cur = conn.cursor()
     cur.execute("CREATE TABLE answers(region,value,answer)")
     cur.executemany("INSERT INTO answers(region,value,answer) VALUES(?,?,?)", answer)
@@ -227,8 +227,9 @@ def buildsqlite():
                 ,"SUBSTR(X.sourcefile,14,13) AS daterange,"
                 ,"COUNT(*) AS votes,"
                 ,"COUNT(*)*100.0/(SELECT COUNT(*) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS vote_pct,"
+                ,"COUNT(*)*100.0/(SELECT COUNT(*) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_vote_pct,"
                 ,"SUM(X.weight)*100.0/(SELECT SUM(weight) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS adj_pct,"
-                ,"SUM(X.weight)*100.0/(SELECT SUM(weight) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_pct,"
+                ,"SUM(X.weight)*100.0/(SELECT SUM(weight) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_adj_pct,"
                 ,col, "AS num,"
                 ,"Y.redness AS redness,"
                 ,"Y.who AS candid"
@@ -241,11 +242,13 @@ def buildsqlite():
     cur.execute(' '.join(sql[:-1]))
     return conn,cur
 
-def get_trend(cur, region, num, include_8888=False):
+def get_trend(cur, region, num, include_8888=False, raw=False):
     "Read from database the rolling poll trend"
-    sql = "SELECT daterange, candid, redness, valid_pct FROM overall WHERE region=? AND num=? ORDER BY daterange"
+    sql = "SELECT daterange, candid, redness, valid_adj_pct FROM overall WHERE region=? AND num=? ORDER BY daterange"
     if include_8888:
-        sql = sql.replace("valid_pct","adj_pct")
+        sql = sql.replace("valid_","")
+    if raw:
+        sql = sql.replace("adj_","vote_")
     rows = list(cur.execute(sql, (region, num)))
     if not rows:
         return None, None, []
@@ -257,7 +260,7 @@ def get_trend(cur, region, num, include_8888=False):
         ret.append([date, row[3]])
     return candid, redness, ret
 
-def get_rank(cur, region, date, include_8888=False):
+def get_rank(cur, region, date, include_8888=False, raw=False):
     "Read from database the latest ranking"
     if isinstance(date, datetime):
         datestr = date.strftime("%m%d")
@@ -269,11 +272,13 @@ def get_rank(cur, region, date, include_8888=False):
     else:
         raise TypeError
     assert(len(datestr)==4)
-    sql = "SELECT daterange, num, candid, redness, valid_pct " \
+    sql = "SELECT daterange, num, candid, redness, valid_adj_pct " \
           "FROM overall " \
-          "WHERE region=? AND daterange LIKE '%%%s' AND num<30 ORDER BY valid_pct DESC" % datestr
+          "WHERE region=? AND daterange LIKE '%%%s' AND num<30 ORDER BY valid_adj_pct DESC" % datestr
     if include_8888:
-        sql = sql.replace("valid_pct","adj_pct").replace("num<30","(num<30 OR num=8888)")
+        sql = sql.replace("valid_","").replace("num<30","(num<30 OR num=8888)")
+    if raw:
+        sql = sql.replace("adj_","vote_")
     rows = list(cur.execute(sql, (region,)))
     if not rows:
         return None, []
@@ -310,9 +315,9 @@ regions = [["香港島","HKIsland",6],
            ["新界西","NTWest",9],["新界東","NTEast",9],
            ["超區","SuperDC",5]]
 
-def create_charts(cur, include_8888=False):
+def create_charts(cur, include_8888=False, raw=False):
     " Create chart on each tab for 5 regions + super DC "
-    tables = create_tables(cur, for_div=True, include_8888=include_8888)
+    tables = create_tables(cur, for_div=True, include_8888=include_8888, raw=raw)
     tabs = []
     for title,code,seats in regions:
         # chart components
@@ -320,7 +325,7 @@ def create_charts(cur, include_8888=False):
         candids = []
         earliest_date, latest_date = None, None
         for n in range(1,30):
-            candid, redness, trend = get_trend(cur, code, n, include_8888)
+            candid, redness, trend = get_trend(cur, code, n, include_8888, raw=raw)
             if not trend: continue
             earliest_date, latest_date = trend[0][0], trend[-1][0]
             colour = getcolour(redness)
@@ -372,13 +377,13 @@ def create_charts(cur, include_8888=False):
     # build and return 
     return Tabs(tabs=tabs)
 
-def create_tables(cur, for_div=False, include_8888=False):
+def create_tables(cur, for_div=False, include_8888=False, raw=False):
     " Produce ranking table "
     tabs = {}
     lastdate = list(cur.execute("SELECT MAX(daterange) FROM overall"))[0][0]
     rangetext = lastdate[6:8]+'/'+lastdate[4:6]+'至'+lastdate[11:13]+'/'+lastdate[9:11]
     for title,code,_ in regions:
-        daterange, rankdata = get_rank(cur, code, lastdate[-4:], include_8888)
+        daterange, rankdata = get_rank(cur, code, lastdate[-4:], include_8888, raw)
         if code == 'SuperDC':
             for n,row in enumerate(rankdata):
                 row = list(row)
