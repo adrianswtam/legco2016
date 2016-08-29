@@ -24,6 +24,7 @@ import urllib.parse
 import os.path
 import csv
 import itertools
+import math
 
 import lxml.html
 import yaml
@@ -210,7 +211,13 @@ def buildsqlite(dbname=':memory:'):
         os.unlink(file_dest)
     except:
         pass
+    def error_margin(z, n, p):
+        if n > 0:
+            return z*math.sqrt(p*(100.0-p)/float(n))
+        else:
+            return None
     conn = sqlite3.connect(dbname)
+    conn.create_function('ERRMARGIN', 3, error_margin)
     cur = conn.cursor()
     cur.execute("CREATE TABLE answers(region,value,answer)")
     cur.executemany("INSERT INTO answers(region,value,answer) VALUES(?,?,?)", answer)
@@ -227,9 +234,13 @@ def buildsqlite(dbname=':memory:'):
                 ,"SUBSTR(X.sourcefile,14,13) AS daterange,"
                 ,"COUNT(*) AS votes,"
                 ,"COUNT(*)*100.0/(SELECT COUNT(*) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS vote_pct,"
+                ,"(SELECT COUNT(*) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS vote_err,"
                 ,"COUNT(*)*100.0/(SELECT COUNT(*) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_vote_pct,"
+                ,"(SELECT COUNT(*) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_vote_err,"
                 ,"SUM(X.weight)*100.0/(SELECT SUM(weight) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS adj_pct,"
+                ,"(SELECT SUM(weight) FROM poll WHERE",col,"IS NOT NULL AND sourcefile=X.sourcefile) AS adj_err,"
                 ,"SUM(X.weight)*100.0/(SELECT SUM(weight) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_adj_pct,"
+                ,"(SELECT SUM(weight) FROM poll WHERE",col,">0 AND",col,"<30 AND sourcefile=X.sourcefile) AS valid_adj_err,"
                 ,col, "AS num,"
                 ,"Y.redness AS redness,"
                 ,"Y.who AS candid"
@@ -240,11 +251,21 @@ def buildsqlite(dbname=':memory:'):
             ,"UNION ALL"
         ]
     cur.execute(' '.join(sql[:-1]))
+    sql = [
+        'UPDATE overall SET',
+                'vote_err=ERRMARGIN(1.96, vote_err, vote_pct),',
+          'valid_vote_err=ERRMARGIN(1.96, valid_vote_err, valid_vote_pct),',
+                 'adj_err=ERRMARGIN(1.96, adj_err, adj_pct),',
+           'valid_adj_err=ERRMARGIN(1.96, valid_adj_err, valid_adj_pct)',
+    ]
+    cur.execute(' '.join(sql))
+    conn.commit()
     return conn,cur
 
 def get_trend(cur, region, num, include_8888=False, raw=False):
     "Read from database the rolling poll trend"
-    sql = "SELECT daterange, candid, redness, valid_adj_pct FROM overall WHERE region=? AND num=? ORDER BY daterange"
+    sql = "SELECT daterange, candid, redness, valid_adj_pct, valid_adj_err " \
+          "FROM overall WHERE region=? AND num=? ORDER BY daterange"
     if include_8888:
         sql = sql.replace("valid_","")
     if raw:
@@ -257,7 +278,7 @@ def get_trend(cur, region, num, include_8888=False, raw=False):
     redness = rows[0][2]
     for row in rows:
         date = datetime.strptime('2016'+row[0][-4:], "%Y%m%d")
-        ret.append([date, row[3]])
+        ret.append([date, row[3], row[4]])
     return candid, redness, ret
 
 def get_rank(cur, region, date, include_8888=False, raw=False):
@@ -272,7 +293,7 @@ def get_rank(cur, region, date, include_8888=False, raw=False):
     else:
         raise TypeError
     assert(len(datestr)==4)
-    sql = "SELECT daterange, num, candid, redness, valid_adj_pct " \
+    sql = "SELECT daterange, num, candid, redness, valid_adj_pct, valid_adj_err " \
           "FROM overall " \
           "WHERE region=? AND daterange LIKE '%%%s' AND num<30 ORDER BY valid_adj_pct DESC" % datestr
     if include_8888:
@@ -323,26 +344,36 @@ def create_charts(cur, include_8888=False, raw=False):
         # chart components
         p = figure(x_axis_label='滾動日期', y_axis_label='支持%' if include_8888 else '有效支持%', x_axis_type="datetime")
         candids = []
+        # line, label, error of each candidate
         earliest_date, latest_date = None, None
         for n in range(1,30):
             candid, redness, trend = get_trend(cur, code, n, include_8888, raw=raw)
             if not trend: continue
-            earliest_date, latest_date = trend[0][0], trend[-1][0]
+            earliest_date = min(earliest_date, trend[0][0]) if earliest_date else trend[0][0]
+            latest_date   = max(latest_date, trend[-1][0]) if latest_date else trend[-1][0]
             colour = getcolour(redness)
-            line = p.line([d for d,_ in trend], [p for _,p in trend], color=colour, line_width=2, line_alpha=0.9)
+
             label = p.text([trend[-1][0]], [trend[-1][1]], text=[candid.rsplit(None,1)[-1]],
                            text_align='right', text_alpha=0.9, text_baseline='bottom', text_color=colour,
                            text_font_size="9pt", y_offset=0.25)
-            candids.append([n, candid, colour, trend[-1][1], line, label])
+            line = p.line([d for d,_,_ in trend], [p for _,p,_ in trend], color=colour, line_width=2, line_alpha=0.9)
+            circle = p.circle([d for d,_,_ in trend], [p for _,p,_ in trend], color=colour, size=4, line_alpha=0.9)
+            margin = p.multi_line([(d,d) for d,_,_ in trend], [(p-e,p+e) for _,p,e in trend], color=colour, line_width=1, line_alpha=0.9)
+            candids.append([n, candid, colour, trend[-1][1], line, label, circle, margin])
+        # line, label, error of undecided
         if include_8888:
             candid, redness, trend = get_trend(cur, code, 8888, True)
             if not trend: continue
-            earliest_date, latest_date = trend[0][0], trend[-1][0]
-            line = p.line([d for d,_ in trend], [p for _,p in trend], color="#707070", line_width=2, line_alpha=0.9)
+            earliest_date = min(earliest_date, trend[0][0]) if earliest_date else trend[0][0]
+            latest_date   = max(latest_date, trend[-1][0]) if latest_date else trend[-1][0]
+            colour = '#707070'
             label = p.text([trend[-1][0]], [trend[-1][1]], text=["未決定"],
-                           text_align='right', text_alpha=0.9, text_baseline='bottom', text_color="#707070",
+                           text_align='right', text_alpha=0.9, text_baseline='bottom', text_color=colour,
                            text_font_size="9pt", y_offset=0.25)
-            candids.append([8888, "未決定", "#707070", trend[-1][1], line, label])
+            line = p.line([d for d,_,_ in trend], [p for _,p,_ in trend], color=colour, line_width=2, line_alpha=0.9)
+            circle = p.circle([d for d,_,_ in trend], [p for _,p,_ in trend], color=colour, size=4, line_alpha=0.9)
+            margin = p.multi_line([(d,d) for d,_,_ in trend], [(p-e,p+e) for _,p,e in trend], color=colour, line_width=1, line_alpha=0.9)
+            candids.append([8888, "未決定", "#707070", trend[-1][1], line, label, circle, margin])
         p.line([earliest_date, latest_date],[100.0/(seats+1), 100.0/(seats+1)],
                line_dash=[6,3], color="black", line_width=2, line_alpha=0.5)
         p.text([earliest_date], [100.0/(seats+1)], text=["穩勝門檻"],
@@ -354,19 +385,33 @@ def create_charts(cur, include_8888=False, raw=False):
         if include_8888:
             top_n.append(len(candids)-1) # last index = 8888
         for n in all_lines:
+            candids[n][-1].visible = \
+            candids[n][-2].visible = False
             if n not in top_n:
-                candids[n][-1].visible = candids[n][-2].visible = False
-        customjs_params = [("line%d"%n, candid[-2]) for n,candid in enumerate(candids)] + \
-                          [("label%d"%n, candid[-1]) for n,candid in enumerate(candids)]
+                candids[n][-3].visible = \
+                candids[n][-4].visible = False
+
+        customjs_params = [("line%d"%n, candid[-4]) for n,candid in enumerate(candids)] + \
+                          [("label%d"%n, candid[-3]) for n,candid in enumerate(candids)] + \
+                          [("circle%d"%n, candid[-2]) for n,candid in enumerate(candids)] + \
+                          [("margin%d"%n, candid[-1]) for n,candid in enumerate(candids)]
         jscode = '''
             var lines = [%s];
             var labels = [%s];
+            var circles = [%s];
+            var margins = [%s];
             for (var n=0; n<lines.length; n++) {
-                 lines[n].visible = (cb_obj.active.indexOf(n) >= 0);
-                labels[n].visible = (cb_obj.active.indexOf(n) >= 0);
-            };''' % (",".join("line%d" % n for n in all_lines), ",".join("label%d" % n for n in all_lines))
-        checkbox = CheckboxGroup(labels=[str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1]+' '+("%.2f%%"%c[3]) for c in candids],
-                                 active=top_n)
+                lines[n].visible  = (cb_obj.active.indexOf(n+1) >= 0);
+                labels[n].visible = (cb_obj.active.indexOf(n+1) >= 0);
+                circles[n].visible = (cb_obj.active.indexOf(0) >= 0 && cb_obj.active.indexOf(n+1) >= 0);
+                margins[n].visible = (cb_obj.active.indexOf(0) >= 0 && cb_obj.active.indexOf(n+1) >= 0);
+            };''' % (",".join("line%d" % n for n in all_lines),
+                     ",".join("label%d" % n for n in all_lines),
+                     ",".join("circle%d" % n for n in all_lines),
+                     ",".join("margin%d" % n for n in all_lines))
+        cblabels = ['誤差@95%CI'] + \
+                   [str(800+c[0] if code=='SuperDC' else c[0])+' '+c[1]+' '+("%.2f%%"%c[3]) for c in candids]
+        checkbox = CheckboxGroup(labels=cblabels, active=[n+1 for n in top_n])
         checkbox.callback = CustomJS(args=dict(customjs_params), code=jscode)
         # ranking table
         div = Div(text=tables[code], width=600)
@@ -386,9 +431,7 @@ def create_tables(cur, for_div=False, include_8888=False, raw=False):
         daterange, rankdata = get_rank(cur, code, lastdate[-4:], include_8888, raw)
         if code == 'SuperDC':
             for n,row in enumerate(rankdata):
-                row = list(row)
-                row[0] += 800
-                rankdata[n] = row
+                rankdata[n] = [800+row[0]]+list(row[1:])
         tabletitle = rangetext+title+'民調排名'
         human, beast = [r for r in rankdata if r[2] is not None and r[2]<0], [r for r in rankdata if r[2] is not None and r[2]>0]
         header = ["編號","政黨","候選人","%" if include_8888 else "有效%",""]
@@ -396,11 +439,11 @@ def create_tables(cur, for_div=False, include_8888=False, raw=False):
         for n in range(max(len(human), len(beast))):
             tabledata.append([])
             if len(human)>n:
-                tabledata[-1].extend([human[n][0]]+human[n][1].split()+["%.2f"%human[n][3],n+1])
+                tabledata[-1].extend([human[n][0]]+human[n][1].split()+["%.2f±%.2f"%(human[n][3],human[n][4]),n+1])
             else:
                 tabledata[-1].extend(['']*5)
             if len(beast)>n:
-                tabledata[-1].extend(['',beast[n][0]]+beast[n][1].split()+["%.2f"%beast[n][3],n+1])
+                tabledata[-1].extend(['',beast[n][0]]+beast[n][1].split()+["%.2f±%.2f"%(beast[n][3],beast[n][4]),n+1])
             else:
                 tabledata[-1].extend(['']*6)
         table = make_table(tabledata)
