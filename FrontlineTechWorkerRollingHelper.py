@@ -31,7 +31,7 @@ import yaml
 
 assert(sys.version_info.major == 3) # Python3 only!
 
-def webscraping(use_cache=True):
+def webscraping(use_cache=False):
     'A generator to fetch all CSVY files of 2016 LegCo rolling data from HKU POP'
     # XPath 2.0 is not supported, so use substring() instead of ends-with()
     if not use_cache:
