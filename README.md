@@ -13,6 +13,8 @@ https://rawgit.com/fltw/legco2016/master/chart.html
 
 是咁的，我都知唔係個個鍾意睇圖，所以我地都整咗MakeExcel.py，可以將港大民研嘅原始數據化成Excel，但係你就要裝Python3+xlsxwriter啦。
 
+仲有，如果你只係想要幅圖而唔想run jupyter，可以用MakeHtml.py。
+
 ## 頭盔
 
 呢度所有程式由前線科技人員制作，資料由香港大學民意研究計劃及選舉事務處取得，無人會保証任何嘢嘅準確性或客觀性。使用者應用自己個腦諗下先好再作任何解讀或行動或責難。呢個唔係投資產品，支持度將來亦可升可跌。
