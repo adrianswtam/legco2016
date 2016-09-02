@@ -153,13 +153,13 @@ def redness(cur):
     cur.execute("CREATE TABLE redness(region,num,redness,who)")
     cur.executemany("INSERT INTO redness(region,num,redness,who) VALUES(?,?,?,?)", data)
 
-def buildsqlite(dbname=':memory:'):
+def buildsqlite(dbname=':memory:', use_cache=False):
     " Produce cursor to SQLite holding all latest data from HKUPOP "
     columns = ['sourcefile']
     data = []
     answer = []
     # work on each URL, gather all data
-    for url, csvy in webscraping():
+    for url, csvy in webscraping(use_cache):
         print(url)
         data_name = deduce_name(url)
         lines = csvy.split("\n")
@@ -208,7 +208,7 @@ def buildsqlite(dbname=':memory:'):
                     pass
     # Write to SQLite
     try:
-        os.unlink(file_dest)
+        os.unlink(dbname)
     except:
         pass
     def error_margin(z, n, p):
@@ -291,7 +291,7 @@ def get_rank(cur, region, date, include_8888=False, raw=False):
     elif isinstance(date, int):
         datestr = "08%02d" % date
     else:
-        raise TypeError
+        raise TypeError("Unknown type %s for %s" % (type(date), date))
     assert(len(datestr)==4)
     sql = "SELECT daterange, num, candid, redness, valid_adj_pct, valid_adj_err " \
           "FROM overall " \
@@ -419,7 +419,7 @@ def create_charts(cur, include_8888=False, raw=False):
         layout = row(checkbox, p, div)
         tab = Panel(child=layout, title=title+"民調（"+str(seats)+'席）')
         tabs.append(tab)
-    # build and return 
+    # build and return
     return Tabs(tabs=tabs)
 
 def create_tables(cur, for_div=False, include_8888=False, raw=False):
@@ -465,6 +465,7 @@ def create_tables(cur, for_div=False, include_8888=False, raw=False):
                 elif n > 5:
                     set_cell_style(3+m,n, color=bcolor)
         if not for_div:
+            from IPython.display import HTML, display
             display(HTML(table._repr_html_()))
         else:
             tabs[code] = table._repr_html_()
