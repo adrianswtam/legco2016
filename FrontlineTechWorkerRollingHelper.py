@@ -45,6 +45,7 @@ def webscraping(use_cache=True):
             yield url, urllib.request.urlopen(url).read().decode('utf-8')
     else:
         for f in reversed(sorted(os.listdir("."))):
+            if 'master' in f: continue
             if 'LC2016_final_' not in f: continue
             yield f, open(f, encoding='utf-8').read()
 
