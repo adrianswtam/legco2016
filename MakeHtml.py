@@ -2,7 +2,7 @@
 
 from FrontlineTechWorkerRollingHelper import *
 
-conn, cur = buildsqlite("poll.db")
+conn, cur = buildsqlite("poll.db", True)
 tabpanel1 = create_charts(cur, False)
 tabpanel2 = create_charts(cur, True)
 tabpanel = Tabs(tabs=[Panel(child=tabpanel1, title="不包游離票"),Panel(child=tabpanel2, title="包括游離票")])
